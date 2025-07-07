@@ -14,7 +14,7 @@ app.post('/api/chat', async (req, res) => {
   try {
     const { messages } = req.body;
     const response = await axios.post(OLLAMA_URL, {
-      model: 'qwen3:1.7b',
+      model: 'deepseek-r1:8b',
       messages
     }, { responseType: 'stream' });
 

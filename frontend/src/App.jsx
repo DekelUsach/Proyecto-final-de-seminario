@@ -1,33 +1,64 @@
 import React, { useState } from 'react';
-
+import './App.css'
 export default function App() {
   const [messages, setMessages] = useState([
     {
       role: "system",
-      content: "Eres un asistente especializado en preparar textos de narrativa para generación de imágenes con IA. A partir de ahora, recibirás fragmentos largos de un libro y deberás:\n\n1. Leer el texto completo y comprender su flujo narrativo (escenas, personajes, acciones, cambios de ambiente, momentos emocionales, objetos clave, etc.).\n2. Insertar el carácter especial «⇼» antes de cada nueva sección que consideres visualmente relevante para crear una imagen.  \n   - Cada sección marcada arrancará en «⇼» y seguirá hasta justo antes de la siguiente «⇼» o hasta el final del texto.\n   - Trata de agrupar en cada sección un fragmento suficientemente descriptivo y cohesionado (20-80 palabras aprox.) que contenga información visual clara (país, paisaje, personajes, acciones).\n3. No cambies ni reescribas el texto original: solo añade el carácter «⇼» en los puntos de separación que tú elijas.\n4. Ajusta la frecuencia de separación según la riqueza visual: escenas estáticas o muy descriptivas pueden ir juntas, escenas complejas o con varios protagonistas conviene separarlas.\n5. Devuelve el resultado como un único bloque de texto, con los prefijos «⇼» indicando cada nueva sección.\n\nPor ejemplo, si el texto fuera un pasaje de “Pinocho”, tú deberás producir algo como:\nÉrase una vez un anciano carpintero llamado Gepeto que era muy feliz haciendo juguetes de madera para los niños de su pueblo.⇼Un día, hizo una marioneta de una madera de pino muy especial y decidió llamarla Pinocho.⇼En la noche, un hada azul llegó al taller del anciano carpintero⇼\n\nAhora, cuando reciba tu texto, aplícate estas instrucciones al 100% y sepáralo en secciones listos para generar imágenes.\n\nA continuación, te dejo el texto al que debes aplicar estas instrucciones:"
+      content: ` You are a highly specialized assistant trained to prepare narrative text for AI image generation. Your role is to read long literary excerpts and break them into visually meaningful sections by inserting the special character **«⇼»** WITHOUT CHANGING THE ORIGINAL TEXT (VERY IMPORTANT NOT TO CHANGE IT).
+      
+       Your task involves:
+      
+       1. Carefully reading and understanding the full narrative flow (including scenes, characters, settings, actions, emotional moments, and key objects).
+       2. Inserting the character **«⇼»** **before** every new section that could be independently illustrated.
+      
+          * Each section starts with «⇼» and continues until just before the next one or the end of the text.
+          * Each section should contain approximately 20-80 words and be visually cohesive (e.g., describing a landscape, a character's action, or a shift in mood or place).
+       3. **Never alter or rewrite the original text**—only insert the «⇼» character at key visual segmentation points.
+       4. Adjust segmentation frequency based on visual richness:
+      
+          * Longer, descriptive passages may stay as a single block.
+          * Action-dense or multi-character scenes may be split more frequently.
+       5. Return the result as a **single block of text** with each new section clearly marked with the «⇼» prefix.
+      
+       Follow these instructions strictly and apply them consistently to every text you process.
+      
+       **Example:**
+       *Once upon a time, there was an old carpenter named Geppetto who was very happy making wooden toys for the children in his village.*⇼
+       *One day, he made a puppet from a very special piece of pine wood and decided to name it Pinocchio.*⇼
+       *At night, a blue fairy came to the old carpenter's workshop.*⇼
+      
+       When given a new input, apply the same logic and formatting to prepare the text for image generation.
+      `
     }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Prompt predeterminado que se envía concatenado al inicio del mensaje de usuario
-  const promptPredeterminado = `Eres un asistente especializado en preparar textos de narrativa para generación de imágenes con IA. A partir de ahora, recibirás fragmentos largos de un libro y deberás:
-
-  1. Leer el texto completo y comprender su flujo narrativo (escenas, personajes, acciones, cambios de ambiente, momentos emocionales, objetos clave, etc.).
-  2. Insertar el carácter especial «⇼» **antes** de cada nueva sección que consideres visualmente relevante para crear una imagen.  
-     - Cada sección marcada arrancará en «⇼» y seguirá hasta justo antes de la siguiente «⇼» o hasta el final del texto.
-     - Trata de agrupar en cada sección un fragmento suficientemente descriptivo y cohesionado (20-80 palabras aprox.) que contenga información visual clara (país, paisaje, personajes, acciones).
-  3. No cambies ni reescribas el texto original: solo añade el carácter **⇼** en los puntos de separación que tú elijas.
-  4. Ajusta la frecuencia de separación según la riqueza visual: escenas estáticas o muy descriptivas pueden ir juntas, escenas complejas o con varios protagonistas conviene separarlas.
-  5. Devuelve el resultado como un único bloque de texto, con los prefijos **⇼** indicando cada nueva sección.
-  6. Al final de cada texto, imprime el caracter **⇼** para identificar que es el final
+  const promptPredeterminado = ` You are an assistant specialized in preparing narrative texts for AI image generation. From now on, you will receive long excerpts from a book and must:
   
-  Por ejemplo, si el texto fuera un pasaje de “Pinocho”, tú deberás producir algo como:
-  Érase una vez un anciano carpintero llamado Gepeto que era muy feliz haciendo juguetes de madera para los niños de su pueblo.⇼Un día, hizo una marioneta de una madera de pino muy especial y decidió llamarla Pinocho.⇼En la noche, un hada azul llegó al taller del anciano carpintero⇼
+  1. Read the entire text and understand its narrative flow (scenes, characters, actions, changes in setting, emotional moments, key objects, etc.).
+  2. Insert the special character **«⇼» before** each new section you consider visually relevant for creating an image.
   
-  Ahora, cuando reciba tu texto, aplícate estas instrucciones al 100% y sepáralo en secciones listos para generar imágenes.
+     * Each marked section will start with «⇼» and continue until just before the next «⇼» or the end of the text.
+     * Try to group in each section a sufficiently descriptive and cohesive fragment (around 20-80 words) that contains clear visual information (country, landscape, characters, actions).
+  3. BY ANY MEANS, Do NOT change or rewrite the original text: just add the **⇼** character at the separation points you choose.
+  4. Adjust the frequency of separation according to visual richness: static or very descriptive scenes can be grouped together, while complex scenes or those with several protagonists should be separated.
+  5. Return the result as a single block of text, with the **⇼** prefixes indicating each new section.
+  6. At the end of each text, print the character **⇼** to mark the end.
+  
+  For example, if the text were a passage from "Pinocchio," you should produce something like:
+  
+  *Once upon a time, there was an old carpenter named Geppetto who was very happy making wooden toys for the children in his village.
+  *⇼*One day, he made a puppet from a very special piece of pine wood and decided to name it Pinocchio.
+  *⇼*At night, a blue fairy came to the old carpenter's workshop.*⇼
+  
+  Now, when you receive your text, apply these instructions 100% and separate it into sections ready for image generation.
 
-  A continuacion, te dejo el texto al que debes aplicar estas instrucciones: 
+  And remember, DO NOT CHANGE THE ORIGINAL TEXT.
+  
+  Below, I'll leave you the text to which you must apply these instructions:
+  
   `;
 
   const handleSend = async (e) => {
@@ -74,42 +105,28 @@ export default function App() {
   };
 
   return (
-    <div className='container' style={{ margin: '2rem auto', maxWidth: 600, fontFamily: 'sans-serif' }}>
-      <h2>Chatbot IA con Ollama (qwen3:1.7b)</h2>
-      <div
-        style={{
-          border: '1px solid #ddd',
-          padding: '1rem',
-          minHeight: 300,
-          marginBottom: 16,
-          background: '#fafafa'
-        }}
-      >
-        {messages.filter(m => m.role !== 'system').map((m, i) => (
-          <div
-            key={i}
-            style={{
-              marginBottom: 12,
-              textAlign: m.role === 'user' ? 'right' : 'left'
-            }}
-          >
-            <b>{m.role === 'user' ? 'Tú' : 'Bot'}:</b> {m.content}
-          </div>
-        ))}
-        {loading && <div>Escribiendo...</div>}
+    <div className="container">
+  <h2>Chatbot IA con Ollama (qwen3:1.7b)</h2>
+  <div className="message-list">
+    {messages.filter(m => m.role !== 'system').map((m, i) => (
+      <div key={i} className={`message-item ${m.role === 'user' ? 'user' : 'bot'}`}>
+        <b>{m.role === 'user' ? 'Tú' : 'Bot'}:</b> {m.content}
       </div>
+    ))}
+    {loading && <div className="loading">Escribiendo...</div>}
+  </div>
 
-      <form onSubmit={handleSend} style={{ display: 'flex', gap: 8 }}>
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          placeholder="Escribe tu mensaje..."
-          style={{ flex: 1, padding: 8 }}
-        />
-        <button type="submit" disabled={loading || !input.trim()}>
-          Enviar
-        </button>
-      </form>
-    </div>
+  <form onSubmit={handleSend}>
+    <input
+      value={input}
+      onChange={e => setInput(e.target.value)}
+      placeholder="Escribe tu mensaje..."
+    />
+    <button type="submit" disabled={loading || !input.trim()}>
+      Enviar
+    </button>
+  </form>
+</div>
+
   );
 }
