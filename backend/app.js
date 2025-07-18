@@ -1,10 +1,8 @@
-// server.js
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"; // 💥 solo desarrollo
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const { InferenceClient } = require('@huggingface/inference');
 
 const app = express();
 app.use(cors());
@@ -15,35 +13,51 @@ if (!HF_TOKEN) {
   console.error('❌ Define HF_TOKEN en tu .env');
   process.exit(1);
 }
-const client = new InferenceClient(HF_TOKEN);
+
+// Función para consultar directamente el endpoint de chat de Hugging Face
+async function queryHfChat(data) {
+  const response = await fetch(
+    'https://router.huggingface.co/v1/chat/completions',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${HF_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    }
+  );
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Hugging Face error: ${response.status} ${errText}`);
+  }
+
+  const result = await response.json();
+  return result;
+}
 
 app.post('/api/chat', async (req, res) => {
   try {
     const {
       messages,
-      model = 'deepseek-ai/DeepSeek-R1-0528',
-      provider = 'fireworks-ai'
+      model = 'mistralai/Mixtral-8x7B-Instruct-v0.1:together',
+      ...rest
     } = req.body;
 
-    const chatResponse = await client.chatCompletion({
-      provider,
-      model,
-      messages,
-      // le decimos al modelo que nos dé el texto segmentado
-      // con el marcador ⇼ tal como tienes en tu system prompt
-      // (ya está ahí en messages[0])
-      stream: false
-    });
-
-    // 1) extraemos el contenido
-    let content = chatResponse.choices?.[0]?.message?.content || '';
-    // 2) limpiamos cualquier <think>…</think>
+    // Llamamos al endpoint de chat de HF
+    const hfResponse = await queryHfChat({ messages, model, ...rest });
+    
+    // Extraemos el contenido de la primera elección
+    let content =
+      hfResponse.choices?.[0]?.message?.content || '';
+    // Limpiamos posibles etiquetas <think>
     content = content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
     res.json({ message: { content } });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Error comunicándose con Hugging Face' });
+    res.status(500).json({ error: 'Error comunicándose con Hugging Face', details: err.message });
   }
 });
 
