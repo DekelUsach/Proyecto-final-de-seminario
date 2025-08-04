@@ -35,8 +35,10 @@ export default function App() {
 
   Also, DO NOT GIVE AN ANSWER, JUST GIVE THE DIVIDED TEXT
 
-  **Important**: under no circumstances output any <think> or internal reasoning tags. Only return the original text with the marker ⇼ before each visual section and a final ⇼ at the end.
+  **Important**: under no circumstances output any <think> or internal reasoning tags. Only return the original text with the marker ⇼ before each visual section and a final ⇼ at the end. DO NOT RESPOND ANYTHING ELSE THAN THE DIVIDED TEXT, DO NOT SAY NOTHING EXCEPT FOR THE TEXT
   
+  If no text has been sent to you, reply with "no text sent" (IMPORTANT)
+
   Below, I'll leave you the text to which you must apply these instructions:`;
 
   const handleSend = async (e) => {
