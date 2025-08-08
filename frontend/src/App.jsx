@@ -11,7 +11,7 @@ export default function App() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const promptPredeterminado = ` You are an assistant specialized in preparing narrative texts for AI image generation. From now on, you will receive long excerpts from a book and must:
+  const promptPredeterminado = `You are an assistant specialized in preparing narrative texts for AI image generation. From now on, you will receive long excerpts from a book and must:
   
   1. Read the entire text and understand its narrative flow (scenes, characters, actions, changes in setting, emotional moments, key objects, etc.).
   2. Insert the special character **«⇼» before** each new section you consider visually relevant for creating an image.
@@ -39,6 +39,10 @@ export default function App() {
   
   If no text has been sent to you, reply with "no text sent" (IMPORTANT)
 
+  Also, highlight the most important words in bold regarding the text context. Highlight them in bold like this:
+
+  The marvelous minion got <b>excited</b> when he saw a banana.
+
   Below, I'll leave you the text to which you must apply these instructions:`;
 
   const handleSend = async (e) => {
@@ -51,21 +55,19 @@ export default function App() {
     setInput('');
 
     try {
-      const userContent = `${promptPredeterminado} ${input}`;
-      const payloadMessages = [
-        ...messages,
-        { role: 'user', content: userContent }
-      ];
       const res = await fetch('http://localhost:3001/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: payloadMessages })
+        body: JSON.stringify({
+          instrucciones: promptPredeterminado,
+          texto: input
+        })
       });
       const data = await res.json();
 
       setMessages([
         ...uiMessages,
-        { role: 'assistant', content: data.message?.content || 'Sin respuesta' }
+        { role: 'assistant', content: data.text || 'Sin respuesta' }
       ]);
     } catch (err) {
       console.error(err);
@@ -80,7 +82,7 @@ export default function App() {
 
   return (
     <div className="container">
-      <h2>Chatbot IA con Hugging Face</h2>
+      <h2>Chatbot IA con Gemini 2.0 Flash</h2>
       <div className="message-list">
         {messages.filter(m => m.role !== 'system').map((m, i) => (
           <div key={i} className={`message-item ${m.role === 'user' ? 'user' : 'bot'}`}>
