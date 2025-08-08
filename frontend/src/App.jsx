@@ -37,7 +37,9 @@ export default function App() {
 
   **Important**: under no circumstances output any <think> or internal reasoning tags. Only return the original text with the marker ⇼ before each visual section and a final ⇼ at the end. DO NOT RESPOND ANYTHING ELSE THAN THE DIVIDED TEXT, DO NOT SAY NOTHING EXCEPT FOR THE TEXT
   
-  If no text has been sent to you, reply with "no text sent" (IMPORTANT)
+  If no text has been sent to you, reply with "no text sent" (IMPORTANT). 
+
+  Each paragraph should at least have 70 words. You cannot divide paragraphs in the middle of a sentence, it MUST always end in a dot.
 
   Also, highlight the most important words in bold regarding the text context. Highlight them in bold like this:
 
