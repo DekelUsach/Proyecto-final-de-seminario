@@ -1,22 +1,41 @@
+import 'dotenv/config';
 import express from "express";
-import { startChroma } from "./chromaServer.js";
-import { getOrCreateCollection } from "./vectorStore.js";
-
-startChroma(); // Lanza el servidor de Chroma en segundo plano
+import cors from "cors";
+import { indexStory, askQuestion } from "./rag/index.js";
 
 const app = express();
-app.use(express.json());
+app.use(cors());
+app.use(express.json({ limit: "10mb" }));
 
-app.post("/index", async (req, res) => {
-  const { name, text } = req.body;
-  const collection = await getOrCreateCollection(name);
-
-  await collection.add({
-    ids: ["doc1"],
-    documents: [text]
-  });
-
-  res.json({ message: "Texto indexado" });
+// Indexar texto por storyId
+app.post("/api/indexStory", async (req, res) => {
+  try {
+    const { storyId, text } = req.body;
+    if (!storyId || !text) {
+      return res.status(400).json({ error: "Parametros requeridos: storyId, text" });
+    }
+    await indexStory(storyId, text);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("/api/indexStory error", err);
+    res.status(500).json({ error: err.message || "internal_error" });
+  }
 });
 
-app.listen(3001, () => console.log("Servidor en http://localhost:3001"));
+// Hacer pregunta usando RAG
+app.post("/api/ask", async (req, res) => {
+  try {
+    const { storyId, question } = req.body;
+    if (!storyId || !question) {
+      return res.status(400).json({ error: "Parametros requeridos: storyId, question" });
+    }
+    const answer = await askQuestion(storyId, question);
+    res.json({ answer });
+  } catch (err) {
+    console.error("/api/ask error", err);
+    res.status(500).json({ error: err.message || "internal_error" });
+  }
+});
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`Servidor en http://localhost:${PORT}`));
