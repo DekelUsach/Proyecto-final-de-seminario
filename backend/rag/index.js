@@ -341,14 +341,14 @@ function buildPrompt(question, passages) {
   const context = list
     .map((p, i) => `(${i + 1}) ${p.text}`)
     .join("\n\n");
-  return `Eres un asistente de QA ESTRICTO basado en contexto.
-INSTRUCCIONES:
-- Responde EXCLUSIVAMENTE con información textual del contexto.
-- Si la pregunta no se puede contestar con el contexto, responde exactamente: "No está en el texto".
-- Cita brevemente entre comillas la frase del contexto que justifica tu respuesta cuando sea posible.
-- Sé breve y directo.
+  return `=== CONTEXTO RELEVANTE ===\n${context}\n=== FIN CONTEXTO ===\n\nPregunta del usuario: ${question}\n\nInstrucciones de estilo:\n- Responde de forma clara, amable y personalizada en español rioplatense neutral.\n- Si la respuesta no está escrita de forma explícita en el contexto, deduce y sintetiza a partir de lo que el texto sugiere.\n- Si la pregunta no está relacionada con el texto, explica amablemente que se está yendo por las ramas e invítalo a volver al contenido cargado.\n- Evita respuestas telegráficas; ofrece 2-5 oraciones útiles como máximo.\n\nRespuesta:`;
+}
 
-Contexto:\n${context}\n\nPregunta: ${question}\nRespuesta:`;
+function buildGlobalContextText(rows, maxChars = 6000) {
+  const texts = (rows || []).map(r => r.text || "").filter(Boolean);
+  const joined = texts.join("\n\n");
+  if (joined.length <= maxChars) return joined;
+  return joined.slice(0, maxChars);
 }
 
 // Intento extractivo simple antes de llamar al LLM
@@ -457,16 +457,73 @@ async function localGenerate(prompt) {
 import { generateWithGemini } from "./llm-gemini.js";
 
 export async function askQuestion(storyId, question) {
-  const top = await retrieveTopK(storyId, question, 5, 0.35, 0.7);
-  if (!top.length) return "No está en el texto";
+  await ensureMemoryLoaded();
+  // Verificar existencia del storyId antes de proceder
+  const exists = await storyExists(storyId);
+  if (!exists) {
+    return "El texto que estas solicitando, no existe";
+  }
+  const top = await retrieveTopK(storyId, question, 6, 0.25, 0.7);
+  // Si no hay pasajes, intentamos con TODO el texto indexado en memoria (si existe)
+  if (!top.length) {
+    await ensureMemoryLoaded();
+    const mem = memoryByStory.get(storyId);
+    if (mem && Array.isArray(mem.rows) && mem.rows.length) {
+      const globalCtx = buildGlobalContextText(mem.rows, 6000);
+      const prompt = buildPrompt(question, [{ text: globalCtx }]);
+      try {
+        const answer = await generateWithGemini(prompt, {
+          temperature: 0.5,
+          topP: 0.8,
+          maxTokens: 512,
+          systemInstruction: "Tu eres LULU, la mascota virtual de Loomi. Eres amable, cercana y ayudas al usuario a entender el texto cargado de la manera más fácil posible. Si te preguntan algo fuera del texto, avisa con calidez que se está yendo por las ramas e invítalo a volver al contenido cargado."
+        });
+        if (answer && answer.trim()) return answer.trim();
+      } catch (_) {}
+    }
+    return "Hola, soy LULU. No encontré fragmentos exactos, pero puedo ayudarte si me preguntas algo directamente sobre el texto que cargaste.";
+  }
+
+  // Primero, intento extractivo si hay una cita clara
   const extractive = tryExtractiveAnswer(question, top);
-  if (extractive) return extractive;
+  if (extractive) return `Como dice el texto: ${extractive}`;
+
+  // Prompt con pasajes relevantes
   const prompt = buildPrompt(question, top);
   try {
-    const answer = await generateWithGemini(prompt, { temperature: 0, topP: 0.1 });
+    const answer = await generateWithGemini(prompt, {
+      temperature: 0.5,
+      topP: 0.8,
+      maxTokens: 512,
+      systemInstruction: "Tu eres LULU, la mascota virtual de Loomi. Eres amable, cercana y respondes en español. Basas tus respuestas en el contexto, pero cuando no hay una frase exacta, sintetizas conclusiones razonables. Si la pregunta no está relacionada con el texto, avisa amablemente y sugiere volver al contenido cargado."
+    });
     if (answer && answer.trim()) return answer.trim();
   } catch (_) {}
-  return await localGenerate(prompt);
+
+  // Fallback local: genera una síntesis breve y amable
+  const local = await localGenerate(prompt);
+  return `Te cuento de forma simple: ${local}`;
+}
+
+async function storyExists(storyId) {
+  try {
+    const mem = memoryByStory.get(storyId);
+    if (mem && Array.isArray(mem.rows) && mem.rows.length > 0) return true;
+    // Si no está en memoria, buscamos en la tabla de LanceDB
+    const db = await getDb();
+    const names = await db.tableNames();
+    if (!names.includes(TABLE_NAME)) return false;
+    const table = await getOrCreateTable();
+    try {
+      // Intento económico: leer un subconjunto grande y filtrar
+      const all = await table.toArray();
+      return Array.isArray(all) && all.some(r => String(r.storyId) === String(storyId));
+    } catch (_) {
+      return false;
+    }
+  } catch (_) {
+    return false;
+  }
 }
 
 

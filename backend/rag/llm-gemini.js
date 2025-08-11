@@ -12,12 +12,16 @@ if (apiKey) {
 
 export async function generateWithGemini(prompt, opts = {}) {
   if (!client) throw new Error("gemini_not_configured");
-  const model = client.getGenerativeModel({ model: process.env.GEMINI_MODEL || "gemini-2.0-flash" });
+  const systemInstruction = opts.systemInstruction || opts.system || undefined;
+  const model = client.getGenerativeModel({
+    model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
+    ...(systemInstruction ? { systemInstruction } : {})
+  });
   const generationConfig = {
-    temperature: opts.temperature ?? 0,
-    topP: opts.topP ?? 0.1,
+    temperature: opts.temperature ?? 0.4,
+    topP: opts.topP ?? 0.8,
     topK: opts.topK ?? 40,
-    maxOutputTokens: opts.maxTokens ?? 256
+    maxOutputTokens: opts.maxTokens ?? 512
   };
   const result = await model.generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig });
   const text = result?.response?.text?.() || "";
