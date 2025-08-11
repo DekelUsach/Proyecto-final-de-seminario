@@ -10,7 +10,9 @@ app.use(express.json({ limit: "10mb" }));
 // Indexar texto por storyId
 app.post("/api/indexStory", async (req, res) => {
   try {
-    const { storyId, text } = req.body;
+    let { storyId, text } = req.body;
+    storyId = (storyId ?? "").trim();
+    text = (text ?? "").trim();
     if (!storyId || !text) {
       return res.status(400).json({ error: "Parametros requeridos: storyId, text" });
     }
@@ -25,7 +27,9 @@ app.post("/api/indexStory", async (req, res) => {
 // Hacer pregunta usando RAG
 app.post("/api/ask", async (req, res) => {
   try {
-    const { storyId, question } = req.body;
+    let { storyId, question } = req.body;
+    storyId = (storyId ?? "").trim();
+    question = (question ?? "").trim();
     if (!storyId || !question) {
       return res.status(400).json({ error: "Parametros requeridos: storyId, question" });
     }
