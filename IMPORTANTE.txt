@@ -1,0 +1,4 @@
+para hacer que funcione la extraccion de caracteres de un archivo .pdf, se deben instalar las siguientes dependencias que no se encuentran en package.json:
+
+      winget install -e --id GraphicsMagick.GraphicsMagick --silent
+      winget install -e --id ArtifexSoftware.Ghostscript --silent

@@ -1,10 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './App.css';
 
 export default function App() {
   // --- INDEXACIÓN ---
   const [storyId, setStoryId] = useState('');
+  const [storyTitle, setStoryTitle] = useState('');
   const [storyText, setStoryText] = useState('');
+  // --- LISTA DE HISTORIAS ---
+  const [stories, setStories] = useState([]);
+  const [loadingStories, setLoadingStories] = useState(false);
+
+  const fetchStories = async () => {
+    setLoadingStories(true);
+    try {
+      const res = await fetch('http://localhost:3001/api/stories');
+      const data = await res.json();
+      if (res.ok) {
+        setStories(Array.isArray(data.stories) ? data.stories : []);
+      }
+    } catch (_) {}
+    setLoadingStories(false);
+  };
+
+  useEffect(() => {
+    fetchStories();
+  }, []);
   const [indexStatus, setIndexStatus] = useState(null);
   const [loadingIndex, setLoadingIndex] = useState(false);
 
@@ -12,22 +32,28 @@ export default function App() {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [loadingAsk, setLoadingAsk] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
   // Handler para indexar el cuento
   const handleIndex = async (e) => {
     e.preventDefault();
-    if (!storyId.trim() || !storyText.trim()) return;
+    if (!storyText.trim()) return;
     setLoadingIndex(true);
     setIndexStatus(null);
     try {
       const res = await fetch('http://localhost:3001/api/indexStory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storyId, text: storyText })
+        body: JSON.stringify({ text: storyText, title: storyTitle })
       });
       const data = await res.json();
       if (res.ok) {
-        setIndexStatus('✅ Historia indexada correctamente.');
+        setStoryId(String(data.storyId || ''));
+        setIndexStatus(`✅ Texto indexado. ID: ${data.storyId}${data.title ? ` · Título: ${data.title}` : ''}`);
+        setStoryTitle('');
+        setStoryText('');
+        fetchStories();
       } else {
         setIndexStatus(`❌ Error: ${data.error || 'desconocido'}`);
       }
@@ -63,32 +89,41 @@ export default function App() {
 
   return (
     <div className="container">
-      <h1>🔗 RAG con Gemini 2.0 + Pinecone</h1>
+      <div className="header">
+        <div className="brand">
+          <div className="logo" />
+          <div className="title">
+            <h1>LULU · RAG Assistant</h1>
+            <p>Indexá tu texto y preguntá con respuestas amables y útiles</p>
+          </div>
+        </div>
+      </div>
 
-      {/* === Sección 1: Indexar cuento === */}
+      {/* === Grid principal === */}
+      <div className="grid">
       <section className="card">
-        <h2>1. Indexar un cuento</h2>
+        <h2>1. Indexar un texto</h2>
         <form onSubmit={handleIndex}>
           <div className="form-group">
-            <label>Story ID:</label>
+            <label>Título (opcional)</label>
             <input
               type="text"
-              value={storyId}
-              onChange={e => setStoryId(e.target.value)}
-              placeholder="ej: cuento1"
+              value={storyTitle}
+              onChange={e => setStoryTitle(e.target.value)}
+              placeholder="Ej: Introducción a bases vectoriales"
             />
           </div>
           <div className="form-group">
-            <label>Texto del cuento:</label>
+            <label>Texto a indexar</label>
             <textarea
               rows={6}
               value={storyText}
               onChange={e => setStoryText(e.target.value)}
-              placeholder="Pega aquí el texto completo del cuento..."
+              placeholder="Pegá acá el texto completo..."
             />
           </div>
           <button type="submit" disabled={loadingIndex}>
-            {loadingIndex ? 'Indexando...' : 'Indexar cuento'}
+            {loadingIndex ? 'Indexando...' : 'Indexar texto'}
           </button>
         </form>
         {indexStatus && <p className="status">{indexStatus}</p>}
@@ -96,15 +131,15 @@ export default function App() {
 
       {/* === Sección 2: Hacer preguntas === */}
       <section className="card">
-        <h2>2. Hacer preguntas sobre el cuento</h2>
+        <h2>2. Preguntar sobre el texto</h2>
         <form onSubmit={handleAsk}>
           <div className="form-group">
-            <label>Story ID:</label>
+            <label>ID del texto</label>
             <input
               type="text"
               value={storyId}
               onChange={e => setStoryId(e.target.value)}
-              placeholder="Debe coincidir con el ID indexado"
+              placeholder="Ingresá el ID del texto (ej: 0, 1, 2...)"
             />
           </div>
           <div className="form-group">
@@ -113,7 +148,7 @@ export default function App() {
               type="text"
               value={question}
               onChange={e => setQuestion(e.target.value)}
-              placeholder="Escribe tu pregunta..."
+              placeholder="Escribí tu pregunta..."
             />
           </div>
           <button type="submit" disabled={loadingAsk}>
@@ -126,6 +161,92 @@ export default function App() {
             <p>{answer}</p>
           </div>
         )}
+      </section>
+      </div>
+
+      {/* === Carga de archivos PDF/DOCX === */}
+      <section className="card" style={{animationDelay: '120ms'}}>
+        <h2>4. Cargar archivo (PDF/DOCX)</h2>
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          const form = e.currentTarget;
+          const fileInput = form.querySelector('input[type=\"file\"]');
+          const titleInput = form.querySelector('input[name=\"title\"]');
+          const file = fileInput?.files?.[0];
+          if (!file) return;
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('title', titleInput?.value || '');
+          setUploading(true);
+          setUploadStatus(null);
+          try {
+            const res = await fetch('http://localhost:3001/api/upload', {
+              method: 'POST',
+              body: formData
+            });
+            const data = await res.json();
+            if (res.ok) {
+              setUploadStatus(`✅ Archivo indexado. ID: ${data.storyId}${data.title ? ` · Título: ${data.title}` : ''}`);
+              setStoryId(String(data.storyId));
+              fetchStories();
+              form.reset();
+            } else {
+              setUploadStatus(`❌ Error: ${data.error || 'desconocido'}`);
+            }
+          } catch (err) {
+            setUploadStatus(`❌ Error de red: ${err.message}`);
+          }
+          setUploading(false);
+        }}>
+          <div className="form-group">
+            <label>Título (opcional)</label>
+            <input type="text" name="title" placeholder="Ej: Documento escaneado" />
+          </div>
+          <div className="form-group">
+            <label>Archivo</label>
+            <input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+          </div>
+          <button type="submit" disabled={uploading}>{uploading ? 'Subiendo...' : 'Subir e indexar'}</button>
+        </form>
+        {uploadStatus && <p className="status">{uploadStatus}</p>}
+      </section>
+
+      {/* === Listado de textos indexados === */}
+      <section className="card" style={{animationDelay: '80ms'}}>
+        <h2>3. Textos indexados</h2>
+        <p className="status">Encontrados: {stories.length}</p>
+        <div className="stories-list">
+          {loadingStories && <p className="status">Cargando...</p>}
+          {!loadingStories && stories.length === 0 && (
+            <p className="status">Todavía no hay textos indexados.</p>
+          )}
+          {!loadingStories && stories.map(s => (
+            <div key={s.storyId} className="story-row">
+              <div className="story-meta">
+                <div className="story-title">{s.title || <span style={{color:'#9aa6b2'}}>Sin título</span>}</div>
+                <div className="story-sub">ID: <b>{s.storyId}</b> · Chunks: {s.chunks}</div>
+              </div>
+              <div className="story-actions">
+                <button onClick={() => { setStoryId(String(s.storyId)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Usar ID</button>
+                <button onClick={() => navigator.clipboard.writeText(String(s.storyId))} style={{background:"linear-gradient(135deg,#22d3ee,#6c8cff)"}}>Copiar ID</button>
+                <button
+                  onClick={async () => {
+                    const confirmDel = window.confirm(`¿Eliminar el texto con ID ${s.storyId}? Esta acción no se puede deshacer.`);
+                    if (!confirmDel) return;
+                    try {
+                      const res = await fetch(`http://localhost:3001/api/stories/${s.storyId}`, { method: 'DELETE' });
+                      if (res.ok) {
+                        if (String(storyId) === String(s.storyId)) setStoryId('');
+                        fetchStories();
+                      }
+                    } catch (_) {}
+                  }}
+                  style={{background:"linear-gradient(135deg,#ef4444,#f97316)"}}
+                >Eliminar</button>
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
     </div>
   );  

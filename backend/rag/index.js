@@ -13,6 +13,7 @@ const CACHE_PATH = path.join(__dirname, "..", ".lancedb", "memory-cache.json");
 
 // Índice en memoria para mejorar recuperación inmediata tras indexar
 const memoryByStory = new Map(); // storyId -> { rows: Row[], embedKind: 'gemini'|'local', dim: number }
+let lastAssignedStoryId = -1; // autoincrement story id, starts at -1 so first assigned is 0
 let memoryLoaded = false;
 
 async function ensureDirExists(filePath) {
@@ -27,6 +28,7 @@ async function saveMemoryCache() {
     for (const [sid, val] of memoryByStory.entries()) {
       obj[sid] = { embedKind: val.embedKind, dim: val.dim, rows: val.rows };
     }
+    obj.__meta = { lastAssignedStoryId };
     await fs.writeFile(CACHE_PATH, JSON.stringify(obj));
   } catch (_) {}
 }
@@ -40,6 +42,15 @@ async function loadMemoryCache() {
       if (val && Array.isArray(val.rows)) {
         memoryByStory.set(sid, { embedKind: val.embedKind || 'local', dim: val.dim || 0, rows: val.rows });
       }
+    }
+    if (obj.__meta && typeof obj.__meta.lastAssignedStoryId === 'number') {
+      lastAssignedStoryId = obj.__meta.lastAssignedStoryId;
+    } else {
+      // Fallback: calcular a partir de claves en memoria
+      const ids = Array.from(memoryByStory.keys())
+        .map(k => Number.parseInt(k, 10))
+        .filter(n => Number.isFinite(n) && n >= 0);
+      lastAssignedStoryId = ids.length ? Math.max(...ids) : -1;
     }
   } catch (_) {}
   memoryLoaded = true;
@@ -91,7 +102,7 @@ function splitTextIntoChunks(text, targetChars = 400, sentenceOverlap = 1) {
   return chunks;
 }
 
-export async function indexStory(storyId, text) {
+export async function indexStory(storyId, text, title = "") {
   const chunks = splitTextIntoChunks(text, 400, 1);
 
   let embedFn = embedWithLocal;
@@ -112,12 +123,14 @@ export async function indexStory(storyId, text) {
     vectors.push(embedding);
   }
 
+  const normTitle = (title || "").toString().trim();
   const rows = chunks.map((chunk, idx) => ({
     id: `${storyId}-${idx}`,
     storyId,
     chunkId: String(idx),
     text: chunk,
-    vector: vectors[idx]
+    vector: vectors[idx],
+    title: normTitle
   }));
 
   // Guardar en memoria para recuperación fiable y rápida
@@ -356,6 +369,16 @@ function tryExtractiveAnswer(question, passages) {
   const q = (question || "").toLowerCase();
   const texts = (passages || []).map(p => p.text || "");
 
+  // Si la pregunta pide interpretación/síntesis, evitamos respuestas extractivas
+  const needsSynthesis = (
+    q.includes("¿por qué") || q.includes("por qué") || q.includes("porque") ||
+    q.includes("como") || q.includes("cómo") || q.includes("de qué manera") ||
+    q.includes("metáfora") || q.includes("metafora") ||
+    q.includes("crecimiento") || q.includes("superación") || q.includes("superacion") ||
+    q.includes("interpret") || q.includes("explica") || q.includes("refleja")
+  );
+  if (needsSynthesis) return "";
+
   const permitiaRegex = /(?:le|les)?\s*permit[íi]a\s+([^\.;\n]+)/i;
   const poderDeRegex = /poder(?:\s+de\s+|\s+para\s+)([^\.;\n]+)/i;
   const habilidadDeRegex = /habilidad(?:\s+de\s+|\s+para\s+)([^\.;\n]+)/i;
@@ -370,31 +393,42 @@ function tryExtractiveAnswer(question, passages) {
     return best ? `"${best}"` : "";
   };
 
-  const m1 = [];
-  for (const t of texts) {
-    const m = t.match(permitiaRegex);
-    if (m && m[1]) m1.push(m[1]);
-  }
-  const ans1 = pickBest(m1);
-  if (ans1) return ans1;
+  // Solo intentar estos patrones si la pregunta lo sugiere
+  const askPermit = q.includes("permitia") || q.includes("permitía");
+  const askPower = q.includes("poder");
+  const askSkill = q.includes("habilidad") || q.includes("capacidad");
 
-  const m2 = [];
-  for (const t of texts) {
-    const m = t.match(poderDeRegex);
-    if (m && m[1]) m2.push(m[1]);
+  if (askPermit) {
+    const m1 = [];
+    for (const t of texts) {
+      const m = t.match(permitiaRegex);
+      if (m && m[1]) m1.push(m[1]);
+    }
+    const ans1 = pickBest(m1);
+    if (ans1) return ans1;
   }
-  const ans2 = pickBest(m2);
-  if (ans2) return ans2;
 
-  const m3 = [];
-  for (const t of texts) {
-    let m = t.match(habilidadDeRegex);
-    if (m && m[1]) m3.push(m[1]);
-    m = t.match(capacidadDeRegex);
-    if (m && m[1]) m3.push(m[1]);
+  if (askPower) {
+    const m2 = [];
+    for (const t of texts) {
+      const m = t.match(poderDeRegex);
+      if (m && m[1]) m2.push(m[1]);
+    }
+    const ans2 = pickBest(m2);
+    if (ans2) return ans2;
   }
-  const ans3 = pickBest(m3);
-  if (ans3) return ans3;
+
+  if (askSkill) {
+    const m3 = [];
+    for (const t of texts) {
+      let m = t.match(habilidadDeRegex);
+      if (m && m[1]) m3.push(m[1]);
+      m = t.match(capacidadDeRegex);
+      if (m && m[1]) m3.push(m[1]);
+    }
+    const ans3 = pickBest(m3);
+    if (ans3) return ans3;
+  }
 
   // Nombre del lugar/objeto: "Cómo se llama..." / "nombre del..."
   if (q.includes("cómo se llama") || q.includes("como se llama") || q.includes("nombre")) {
@@ -486,7 +520,12 @@ export async function askQuestion(storyId, question) {
 
   // Primero, intento extractivo si hay una cita clara
   const extractive = tryExtractiveAnswer(question, top);
-  if (extractive) return `Como dice el texto: ${extractive}`;
+  if (extractive) {
+    // Solo usar formato "Como dice el texto" si la respuesta no es vacía y la pregunta NO requiere síntesis
+    const ql = (question || "").toLowerCase();
+    const syntheticIntent = ql.includes("de qué manera") || ql.includes("metáfora") || ql.includes("metafora") || ql.includes("por qué") || ql.includes("porque") || ql.includes("cómo") || ql.includes("como");
+    if (!syntheticIntent) return `Como dice el texto: ${extractive}`;
+  }
 
   // Prompt con pasajes relevantes
   const prompt = buildPrompt(question, top);
@@ -502,7 +541,56 @@ export async function askQuestion(storyId, question) {
 
   // Fallback local: genera una síntesis breve y amable
   const local = await localGenerate(prompt);
-  return `Te cuento de forma simple: ${local}`;
+  if (local) return `Te cuento de forma simple: ${local}`;
+  // Si por algún motivo local no produce nada, sintetizar desde todo el texto
+  const mem = memoryByStory.get(storyId);
+  if (mem && Array.isArray(mem.rows) && mem.rows.length) {
+    const globalCtx = buildGlobalContextText(mem.rows, 6000);
+    const globalPrompt = buildPrompt(question, [{ text: globalCtx }]);
+    try {
+      const ans2 = await generateWithGemini(globalPrompt, {
+        temperature: 0.6,
+        topP: 0.85,
+        maxTokens: 512,
+        systemInstruction: "Tu eres LULU, la mascota virtual de Loomi. Eres amable y sintetizas ideas cuando no hay citas exactas."
+      });
+      if (ans2 && ans2.trim()) return ans2.trim();
+    } catch (_) {}
+  }
+  return "No pude generar una respuesta en este momento.";
+}
+
+async function maxStoryIdFromTable() {
+  try {
+    const db = await getDb();
+    const names = await db.tableNames();
+    if (!names.includes(TABLE_NAME)) return -1;
+    const table = await getOrCreateTable();
+    const rows = await table.toArray();
+    const ids = (Array.isArray(rows) ? rows : [])
+      .map(r => Number.parseInt(String(r.storyId), 10))
+      .filter(n => Number.isFinite(n) && n >= 0);
+    return ids.length ? Math.max(...ids) : -1;
+  } catch (_) {
+    return -1;
+  }
+}
+
+export async function allocateNextStoryId() {
+  await ensureMemoryLoaded();
+  if (lastAssignedStoryId < 0) {
+    // Inicializar desde memoria y tabla
+    const memIds = Array.from(memoryByStory.keys())
+      .map(k => Number.parseInt(k, 10))
+      .filter(n => Number.isFinite(n) && n >= 0);
+    let maxId = memIds.length ? Math.max(...memIds) : -1;
+    const tableMax = await maxStoryIdFromTable();
+    if (tableMax > maxId) maxId = tableMax;
+    lastAssignedStoryId = maxId;
+  }
+  lastAssignedStoryId += 1;
+  await saveMemoryCache();
+  return lastAssignedStoryId;
 }
 
 async function storyExists(storyId) {
@@ -521,6 +609,62 @@ async function storyExists(storyId) {
     } catch (_) {
       return false;
     }
+  } catch (_) {
+    return false;
+  }
+}
+
+export async function listStories() {
+  await ensureMemoryLoaded();
+  const list = [];
+  try {
+    // Primero desde memoria
+    for (const [sid, val] of memoryByStory.entries()) {
+      const title = val?.rows?.[0]?.title || "";
+      const count = Array.isArray(val?.rows) ? val.rows.length : 0;
+      list.push({ storyId: String(sid), title, chunks: count });
+    }
+    if (list.length > 0) return list.sort((a, b) => Number(a.storyId) - Number(b.storyId));
+    // Si memoria vacía, leer tabla completa
+    const table = await getOrCreateTable();
+    const rows = await table.toArray();
+    const map = new Map();
+    for (const r of rows || []) {
+      const sid = String(r.storyId);
+      const prev = map.get(sid) || { storyId: sid, title: r.title || "", chunks: 0 };
+      prev.chunks += 1;
+      if (!prev.title && r.title) prev.title = r.title;
+      map.set(sid, prev);
+    }
+    return Array.from(map.values()).sort((a, b) => Number(a.storyId) - Number(b.storyId));
+  } catch (_) {
+    return list;
+  }
+}
+
+export async function deleteStory(storyId) {
+  await ensureMemoryLoaded();
+  try {
+    // 1) borrar de memoria
+    memoryByStory.delete(String(storyId));
+    await saveMemoryCache();
+
+    // 2) borrar de la tabla (recreándola sin esos registros)
+    const db = await getDb();
+    const names = await db.tableNames();
+    if (!names.includes(TABLE_NAME)) return true;
+    const table = await getOrCreateTable();
+    const rows = await table.toArray();
+    const kept = (Array.isArray(rows) ? rows : []).filter(r => String(r.storyId) !== String(storyId));
+    if (kept.length === (rows?.length || 0)) return true; // nada que borrar
+    // dropear/recrear
+    try { if (typeof db.dropTable === 'function') await db.dropTable(TABLE_NAME); } catch (_) {}
+    if (kept.length > 0) {
+      await db.createTable(TABLE_NAME, kept);
+    } else {
+      // crear tabla vacía requiere al menos una fila; omitimos y dejamos que se cree en la próxima indexación
+    }
+    return true;
   } catch (_) {
     return false;
   }
