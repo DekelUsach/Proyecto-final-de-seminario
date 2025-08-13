@@ -2,10 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './App.css';
 
 export default function App() {
-  // --- INDEXACIÓN ---
   const [storyId, setStoryId] = useState('');
-  const [storyTitle, setStoryTitle] = useState('');
-  const [storyText, setStoryText] = useState('');
   // --- LISTA DE HISTORIAS ---
   const [stories, setStories] = useState([]);
   const [loadingStories, setLoadingStories] = useState(false);
@@ -26,7 +23,6 @@ export default function App() {
     fetchStories();
   }, []);
   const [indexStatus, setIndexStatus] = useState(null);
-  const [loadingIndex, setLoadingIndex] = useState(false);
 
   // --- QA (PREGUNTAS) ---
   const [question, setQuestion] = useState('');
@@ -35,33 +31,7 @@ export default function App() {
   const [uploadStatus, setUploadStatus] = useState(null);
   const [uploading, setUploading] = useState(false);
 
-  // Handler para indexar el cuento
-  const handleIndex = async (e) => {
-    e.preventDefault();
-    if (!storyText.trim()) return;
-    setLoadingIndex(true);
-    setIndexStatus(null);
-    try {
-      const res = await fetch('http://localhost:3001/api/indexStory', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: storyText, title: storyTitle })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setStoryId(String(data.storyId || ''));
-        setIndexStatus(`✅ Texto indexado. ID: ${data.storyId}${data.title ? ` · Título: ${data.title}` : ''}`);
-        setStoryTitle('');
-        setStoryText('');
-        fetchStories();
-      } else {
-        setIndexStatus(`❌ Error: ${data.error || 'desconocido'}`);
-      }
-    } catch (err) {
-      setIndexStatus(`❌ Error de red: ${err.message}`);
-    }
-    setLoadingIndex(false);
-  };
+  // Eliminado: ya no se permite pegar texto manual para indexar
 
   // Handler para hacer la pregunta
   const handleAsk = async (e) => {
@@ -101,33 +71,6 @@ export default function App() {
 
       {/* === Grid principal === */}
       <div className="grid">
-      <section className="card">
-        <h2>1. Indexar un texto</h2>
-        <form onSubmit={handleIndex}>
-          <div className="form-group">
-            <label>Título (opcional)</label>
-            <input
-              type="text"
-              value={storyTitle}
-              onChange={e => setStoryTitle(e.target.value)}
-              placeholder="Ej: Introducción a bases vectoriales"
-            />
-          </div>
-          <div className="form-group">
-            <label>Texto a indexar</label>
-            <textarea
-              rows={6}
-              value={storyText}
-              onChange={e => setStoryText(e.target.value)}
-              placeholder="Pegá acá el texto completo..."
-            />
-          </div>
-          <button type="submit" disabled={loadingIndex}>
-            {loadingIndex ? 'Indexando...' : 'Indexar texto'}
-          </button>
-        </form>
-        {indexStatus && <p className="status">{indexStatus}</p>}
-      </section>
 
       {/* === Sección 2: Hacer preguntas === */}
       <section className="card">
@@ -166,7 +109,7 @@ export default function App() {
 
       {/* === Carga de archivos PDF/DOCX === */}
       <section className="card" style={{animationDelay: '120ms'}}>
-        <h2>4. Cargar archivo (PDF/DOCX)</h2>
+        <h2>1. Cargar archivo (PDF/DOCX)</h2>
         <form onSubmit={async (e) => {
           e.preventDefault();
           const form = e.currentTarget;

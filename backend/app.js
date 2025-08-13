@@ -5,6 +5,10 @@ import { indexStory, askQuestion, allocateNextStoryId, listStories, deleteStory 
 import multer from 'multer';
 import { extractTextFromPdf, extractTextFromDocx } from './rag/ingest.js';
 import fetch from 'node-fetch';
+import { splitTextWithGemini, splitIntoParagraphArray } from './rag/gemini-splitter.js';
+import { insertPreLoadedText, insertPreLoadedParagraphs, insertPreLoadedTextWithFullText } from './rag/supabase.js';
+import fs from 'fs/promises';
+import path from 'path';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -124,14 +128,64 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         }
       });
     }
-    
+
+    // 1) Mantener el texto completo en memoria local (variable) para indexación posterior
+    const fullText = text;
+
+    // 2) Llamar a Gemini para dividir en párrafos con separador ⇼ (flujo silencioso)
+    console.log(`[UPLOAD] Enviando texto a Gemini para división por ⇼...`);
+    let splitOutput = '';
+    try {
+      splitOutput = await splitTextWithGemini(fullText);
+    } catch (err) {
+      console.error('[UPLOAD] Error Gemini split:', err.message);
+      splitOutput = '';
+    }
+
+    // 3) Parsear en array de párrafos y enviar a Supabase
+    let insertedTextId = null;
+    try {
+      const paragraphs = splitIntoParagraphArray(splitOutput);
+      // Guardar primero registro base del texto en preLoadedTexts (intentando almacenar el texto completo también)
+      const textTitle = title || (fullText.slice(0, 80) + (fullText.length > 80 ? '…' : ''));
+      try {
+        insertedTextId = await insertPreLoadedTextWithFullText({ title: textTitle, fullText });
+      } catch (_) {
+        insertedTextId = await insertPreLoadedText(textTitle);
+      }
+      if (paragraphs.length > 0) {
+        await insertPreLoadedParagraphs(paragraphs, insertedTextId);
+        console.log(`[UPLOAD] Enviados ${paragraphs.length} párrafos a Supabase (preLoadedParagraphs), idText=${insertedTextId}`);
+      } else {
+        console.log('[UPLOAD] Gemini no devolvió párrafos, se continúa con indexación de todos modos');
+      }
+    } catch (e) {
+      console.error('[UPLOAD] Error guardando en Supabase:', e.message);
+      // Respaldo local: guardar el texto dividido en /backups
+      try {
+        const backupsDir = path.join(process.cwd(), 'backups');
+        await fs.mkdir(backupsDir, { recursive: true });
+        const safeTitle = (title || 'texto').replace(/[^\w\-\s]/g, '').trim() || 'texto';
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        const fileName = `${ts}-${safeTitle}.txt`;
+        const filePath = path.join(backupsDir, fileName);
+        const content = (splitOutput && String(splitOutput).trim()) ? String(splitOutput) : `⇼ ${fullText} ⇼`;
+        await fs.writeFile(filePath, content, 'utf8');
+        console.log(`[UPLOAD] Respaldo local escrito en ${filePath}`);
+      } catch (backupErr) {
+        console.error('[UPLOAD] Falló el respaldo local:', backupErr.message);
+      }
+    }
+
+    // 4) Indexar el texto completo en LanceDB
     console.log(`[UPLOAD] Texto válido, indexando...`);
     const storyIdNum = await allocateNextStoryId();
     const storyId = String(storyIdNum);
-    await indexStory(storyId, text, title);
+    await indexStory(storyId, fullText, title);
     console.log(`[UPLOAD] Indexación exitosa, ID: ${storyId}`);
-    
-    res.json({ ok: true, storyId, title: title || null, length: text.length });
+
+    // 5) Responder y limpiar memoria (variable local se perderá al retornar)
+    res.json({ ok: true, storyId, title: title || null, length: fullText.length, idText: insertedTextId });
   } catch (err) {
     console.error('/api/upload error', err);
     res.status(500).json({ error: err.message || 'internal_error' });
