@@ -31,11 +31,11 @@ const PREPROMPT = `You are an assistant specialized in preparing narrative texts
 
   Each paragraph should at least have 70 words. You cannot divide paragraphs in the middle of a sentence, it MUST always end in a dot.
 
-  Also, highlight the most important words in bold regarding the text context. Highlight them in bold like this:
+  Also, highlight the most important words in bold regarding the text context. Highlight them in bold like this example:
 
   The marvelous minion got <b>excited</b> when he saw a banana.
 
-  Below, I'll leave you the text to which you must apply these instructions:`;
+  Last but not least, every paragraph can have a maximum of 35 words. All paragraphs must be coherent; none should be cut off in the middle. If you can't complete the paragraph, you may exceed the word limit by up to 45 words, but not more than that.`;
 
 export async function splitTextWithGemini(originalText) {
 	const text = (originalText || '').toString();
